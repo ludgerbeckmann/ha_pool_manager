@@ -1,0 +1,12 @@
+{
+  "domain": "ha_pool_manager",
+  "name": "Pool Manager",
+  "codeowners": ["@ludgerbeckmann"],
+  "config_flow": true,
+  "documentation": "https://github.com/ludgerbeckmann/ha_pool_manager",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/ludgerbeckmann/ha_pool_manager/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

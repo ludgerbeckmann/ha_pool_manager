@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add pool",
+        "description": "Set up a pool and select the switch that controls the pump.",
+        "data": {
+          "name": "Name",
+          "pump_entity": "Pump (switch)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This pump is already configured for another pool."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pool Manager",
+        "menu_options": {
+          "pump": "Change pump",
+          "add_window": "Add time window",
+          "remove_window": "Remove time windows"
+        }
+      },
+      "pump": {
+        "title": "Pump",
+        "data": {
+          "pump_entity": "Pump (switch)"
+        }
+      },
+      "add_window": {
+        "title": "Add time window",
+        "description": "The pump is switched on at the start and off at the end. If the end is earlier than the start, the window runs past midnight. The days refer to the day the window starts.",
+        "data": {
+          "start": "Start",
+          "end": "End",
+          "days": "Days"
+        }
+      },
+      "remove_window": {
+        "title": "Remove time windows",
+        "data": {
+          "remove": "Windows to remove"
+        }
+      }
+    },
+    "error": {
+      "too_many_windows": "Maximum number of time windows reached.",
+      "start_equals_end": "Start and end must differ.",
+      "no_days": "Select at least one day."
+    }
+  },
+  "entity": {
+    "switch": {
+      "schedule_enabled": {
+        "name": "Schedule active"
+      }
+    },
+    "binary_sensor": {
+      "pump_should_run": {
+        "name": "Pump should run"
+      }
+    },
+    "sensor": {
+      "next_start": {
+        "name": "Next start"
+      },
+      "runtime_today": {
+        "name": "Runtime today"
+      }
+    }
+  },
+  "selector": {
+    "weekdays": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    }
+  },
+  "services": {
+    "run_pump": {
+      "name": "Run pump",
+      "description": "Runs the pump for a set time, independent of the schedule.",
+      "fields": {
+        "duration": {
+          "name": "Duration",
+          "description": "Run time in minutes."
+        },
+        "entry_id": {
+          "name": "Pool (config entry ID)",
+          "description": "Optional. Without it, all pools are affected."
+        }
+      }
+    }
+  }
+}
