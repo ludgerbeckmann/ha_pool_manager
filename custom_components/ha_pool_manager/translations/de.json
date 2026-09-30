@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pool hinzufügen",
+        "description": "Lege einen Pool an und wähle den Schalter, der die Pumpe steuert.",
+        "data": {
+          "name": "Name",
+          "pump_entity": "Pumpe (Schalter)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Diese Pumpe ist bereits für einen anderen Pool eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pool Manager",
+        "menu_options": {
+          "pump": "Pumpe ändern",
+          "add_window": "Zeitfenster hinzufügen",
+          "remove_window": "Zeitfenster entfernen"
+        }
+      },
+      "pump": {
+        "title": "Pumpe",
+        "data": {
+          "pump_entity": "Pumpe (Schalter)"
+        }
+      },
+      "add_window": {
+        "title": "Zeitfenster hinzufügen",
+        "description": "Zu Beginn wird die Pumpe eingeschaltet, am Ende ausgeschaltet. Liegt das Ende vor dem Beginn, läuft das Fenster über Mitternacht. Die Wochentage beziehen sich auf den Tag des Beginns.",
+        "data": {
+          "start": "Beginn",
+          "end": "Ende",
+          "days": "Wochentage"
+        }
+      },
+      "remove_window": {
+        "title": "Zeitfenster entfernen",
+        "data": {
+          "remove": "Zu entfernende Zeitfenster"
+        }
+      }
+    },
+    "error": {
+      "too_many_windows": "Maximale Anzahl an Zeitfenstern erreicht.",
+      "start_equals_end": "Beginn und Ende müssen sich unterscheiden.",
+      "no_days": "Mindestens einen Wochentag wählen."
+    }
+  },
+  "entity": {
+    "switch": {
+      "schedule_enabled": {
+        "name": "Zeitplan aktiv"
+      }
+    },
+    "binary_sensor": {
+      "pump_should_run": {
+        "name": "Pumpe soll laufen"
+      }
+    },
+    "sensor": {
+      "next_start": {
+        "name": "Nächster Start"
+      },
+      "runtime_today": {
+        "name": "Laufzeit heute"
+      }
+    }
+  },
+  "selector": {
+    "weekdays": {
+      "options": {
+        "mon": "Montag",
+        "tue": "Dienstag",
+        "wed": "Mittwoch",
+        "thu": "Donnerstag",
+        "fri": "Freitag",
+        "sat": "Samstag",
+        "sun": "Sonntag"
+      }
+    }
+  },
+  "services": {
+    "run_pump": {
+      "name": "Pumpe laufen lassen",
+      "description": "Lässt die Pumpe unabhängig vom Zeitplan für eine bestimmte Zeit laufen.",
+      "fields": {
+        "duration": {
+          "name": "Dauer",
+          "description": "Laufzeit in Minuten."
+        },
+        "entry_id": {
+          "name": "Pool (Config-Entry-ID)",
+          "description": "Optional. Ohne Angabe sind alle Pools betroffen."
+        }
+      }
+    }
+  }
+}
