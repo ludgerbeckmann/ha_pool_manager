@@ -146,3 +146,131 @@ async def test_unload(hass: HomeAssistant):
     entry = await _setup(hass, [])
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert entry.state is ConfigEntryState.NOT_LOADED
+
+
+POWER = "sensor.pump_power"
+
+
+async def _setup_dry(hass, auto_off=False, pump_state=STATE_ON, power="90", windows=None):
+    hass.states.async_set(PUMP, pump_state)
+    hass.states.async_set(POWER, power, {"unit_of_measurement": "W"})
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Pool",
+        data={"pump_entity": PUMP},
+        options={
+            "pump_entity": PUMP,
+            "windows": windows or [],
+            "power_entity": POWER,
+            "dry_min_power": 75,
+            "dry_max_power": 100,
+            "dry_duration": 5,
+            "dry_auto_off": auto_off,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _dry_state(hass):
+    return hass.states.get("binary_sensor.pool_dry_run_detected").state
+
+
+async def test_dry_run_detected_after_duration_and_latched(hass: HomeAssistant, freezer):
+    freezer.move_to("2026-09-28 12:00:00+00:00")
+    hass.config.set_time_zone("UTC")
+    on, off = _calls(hass)
+    await _setup_dry(hass)
+    assert _dry_state(hass) == STATE_OFF
+    await _tick(hass, freezer, 4)
+    assert _dry_state(hass) == STATE_OFF
+    await _tick(hass, freezer, 1)
+    assert _dry_state(hass) == STATE_ON
+    assert not off  # ohne Auto-Aus wird nicht geschaltet
+
+    # Pumpe aus -> Alarm bleibt gehalten; Neustart der Pumpe nimmt ihn zurück
+    hass.states.async_set(PUMP, STATE_OFF)
+    await _tick(hass, freezer, 1)
+    assert _dry_state(hass) == STATE_ON
+    hass.states.async_set(PUMP, STATE_ON)
+    await hass.async_block_till_done()
+    assert _dry_state(hass) == STATE_OFF
+
+
+async def test_normal_load_never_triggers(hass: HomeAssistant, freezer):
+    freezer.move_to("2026-09-28 12:00:00+00:00")
+    hass.config.set_time_zone("UTC")
+    _calls(hass)
+    await _setup_dry(hass, power="250")
+    await _tick(hass, freezer, 30)
+    assert _dry_state(hass) == STATE_OFF
+
+
+async def test_unavailable_power_is_not_dry_run(hass: HomeAssistant, freezer):
+    freezer.move_to("2026-09-28 12:00:00+00:00")
+    hass.config.set_time_zone("UTC")
+    _calls(hass)
+    await _setup_dry(hass, power=STATE_UNAVAILABLE)
+    await _tick(hass, freezer, 30)
+    assert _dry_state(hass) == STATE_OFF
+
+
+async def test_kw_sensor_is_converted(hass: HomeAssistant, freezer):
+    freezer.move_to("2026-09-28 12:00:00+00:00")
+    hass.config.set_time_zone("UTC")
+    _calls(hass)
+    await _setup_dry(hass, power="0.09")
+    hass.states.async_set(POWER, "0.09", {"unit_of_measurement": "kW"})
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, 5)
+    assert _dry_state(hass) == STATE_ON
+
+
+async def test_auto_off_pauses_schedule_until_acknowledged(hass: HomeAssistant, freezer):
+    freezer.move_to("2026-09-28 12:00:00+00:00")
+    hass.config.set_time_zone("UTC")
+    on, off = _calls(hass)
+    await _setup_dry(
+        hass,
+        auto_off=True,
+        windows=[{"start": "11:00:00", "end": "23:00:00", "days": ALL}],
+    )
+    on.clear(); off.clear()
+    await _tick(hass, freezer, 5)
+    assert _dry_state(hass) == STATE_ON
+    assert len(off) == 1 and off[0].data["entity_id"] == PUMP
+    assert hass.states.get("switch.pool_schedule_active").state == STATE_OFF
+    hass.states.async_set(PUMP, STATE_OFF)
+
+    await _tick(hass, freezer, 5)  # Zeitplan ist pausiert: Pumpe bleibt aus
+    assert not on
+
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.pool_acknowledge_dry_run"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert _dry_state(hass) == STATE_OFF
+    assert hass.states.get("switch.pool_schedule_active").state == STATE_ON
+    assert len(on) == 1  # Zeitplan gleicht die Pumpe wieder an (im Fenster)
+
+
+async def test_dry_run_entities_removed_when_not_configured(hass: HomeAssistant):
+    entry = await _setup_dry(hass)
+    assert hass.states.get("button.pool_acknowledge_dry_run") is not None
+    hass.config_entries.async_update_entry(
+        entry, options={"pump_entity": PUMP, "windows": []}
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get("button.pool_acknowledge_dry_run") is None
+    assert hass.states.get("binary_sensor.pool_dry_run_detected") is None
+
+
+async def test_no_windows_leaves_pump_alone(hass: HomeAssistant, freezer):
+    freezer.move_to("2026-09-28 12:00:00+00:00")
+    hass.config.set_time_zone("UTC")
+    on, off = _calls(hass)
+    await _setup(hass, [], STATE_ON)
+    await _tick(hass, freezer, 5)
+    assert not on and not off

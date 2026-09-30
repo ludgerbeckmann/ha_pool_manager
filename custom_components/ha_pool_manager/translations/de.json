@@ -21,7 +21,8 @@
         "menu_options": {
           "pump": "Pumpe ändern",
           "add_window": "Zeitfenster hinzufügen",
-          "remove_window": "Zeitfenster entfernen"
+          "remove_window": "Zeitfenster entfernen",
+          "dry_run": "Trockenlauferkennung"
         }
       },
       "pump": {
@@ -44,12 +45,27 @@
         "data": {
           "remove": "Zu entfernende Zeitfenster"
         }
+      },
+      "dry_run": {
+        "title": "Trockenlauferkennung",
+        "description": "Erkennt, dass die Pumpe trocken läuft: Die Pumpe ist an und die Leistung liegt die eingestellte Dauer lang durchgehend zwischen unterer und oberer Grenze. Ohne Leistungssensor ist die Funktion aus. Ein Alarm bleibt bestehen, bis er quittiert oder die Pumpe neu gestartet wird.",
+        "data": {
+          "power_entity": "Leistungssensor (W)",
+          "dry_min_power": "Untere Grenze",
+          "dry_max_power": "Obere Grenze",
+          "dry_duration": "Dauer",
+          "dry_auto_off": "Pumpe bei Trockenlauf automatisch ausschalten und Zeitplan pausieren"
+        },
+        "data_description": {
+          "dry_auto_off": "Der Zeitplan wird erst nach dem Quittieren (Button) wieder aktiviert."
+        }
       }
     },
     "error": {
       "too_many_windows": "Maximale Anzahl an Zeitfenstern erreicht.",
       "start_equals_end": "Beginn und Ende müssen sich unterscheiden.",
-      "no_days": "Mindestens einen Wochentag wählen."
+      "no_days": "Mindestens einen Wochentag wählen.",
+      "min_ge_max": "Die untere Grenze muss kleiner als die obere sein."
     }
   },
   "entity": {
@@ -61,6 +77,9 @@
     "binary_sensor": {
       "pump_should_run": {
         "name": "Pumpe soll laufen"
+      },
+      "dry_run_detected": {
+        "name": "Trockenlauf erkannt"
       }
     },
     "sensor": {
@@ -69,6 +88,11 @@
       },
       "runtime_today": {
         "name": "Laufzeit heute"
+      }
+    },
+    "button": {
+      "dry_run_acknowledge": {
+        "name": "Trockenlauf quittieren"
       }
     }
   },

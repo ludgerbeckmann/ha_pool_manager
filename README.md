@@ -11,6 +11,9 @@ erweitert. Aktuell enthalten:
 
 - **Pumpe nach Zeitplan** – die Poolpumpe wird regelmäßig zu festen
   Zeitfenstern ein- und ausgeschaltet.
+- **Trockenlauf-Erkennung** – optional über einen Leistungssensor: läuft die
+  Pumpe mit einer Leistung im "Trockenlauf-Bereich", wird das gemeldet und
+  auf Wunsch die Pumpe abgeschaltet.
 
 ## Installation
 
@@ -39,6 +42,7 @@ starten.
      beziehen sich dann auf den Tag des Beginns). Bis zu 8 Fenster.
    - **Zeitfenster entfernen**
    - **Pumpe ändern**
+   - **Trockenlauferkennung** (siehe unten)
 
 ## Entitäten (pro Pool)
 
@@ -47,7 +51,43 @@ starten.
 | Schalter **Zeitplan aktiv** | Automatik an/aus. Der Zustand bleibt nach einem Neustart erhalten. Beim Ausschalten wird die Pumpe nicht angefasst. |
 | Binärsensor **Pumpe soll laufen** | `on`, solange die Pumpe laut Zeitplan (oder manuellem Lauf) laufen soll. |
 | Sensor **Nächster Start** | Zeitstempel des nächsten geplanten Fensterbeginns. |
+| Binärsensor **Trockenlauf erkannt** | Nur mit Leistungssensor, siehe unten. |
+| Button **Trockenlauf quittieren** | Nur mit Leistungssensor, siehe unten. |
 | Sensor **Laufzeit heute** | Bisherige Laufzeit der Pumpe am heutigen Tag in Minuten (bleibt über Neustarts erhalten). |
+
+## Trockenlauf-Erkennung
+
+Unter **Konfigurieren → Trockenlauferkennung** wird ein **Leistungssensor**
+(`sensor` mit Geräteklasse Leistung, W oder kW) der Pumpe hinterlegt. Ohne
+Leistungssensor ist die Funktion aus (die zugehörigen Entitäten werden dann
+nicht angelegt bzw. entfernt).
+
+| Einstellung | Beispiel |
+|---|---|
+| Untere Grenze | 75 W |
+| Obere Grenze | 100 W |
+| Dauer | 5 min |
+| Pumpe bei Trockenlauf automatisch ausschalten (Standard: aus) | – |
+
+Ein Trockenlauf wird erkannt, wenn die Pumpe **an** ist und die Leistung
+**durchgehend** (Grenzen inklusive) für die eingestellte Dauer im Bereich
+liegt. Verlässt die Leistung den Bereich, geht die Pumpe aus oder ist der
+Sensor `unavailable`/`unknown`, beginnt die Zeitmessung neu - ein
+Sensorausfall (z. B. beim Hochfahren) löst also keinen Alarm aus. Die
+Prüfung gilt für jeden Pumpenlauf (Zeitplan, manuell, `run_pump`).
+
+Bei Erkennung:
+
+- Binärsensor **Trockenlauf erkannt** (Geräteklasse *Problem*) geht auf `on`
+  und eine **Benachrichtigung** in Home Assistant wird angelegt. Der Alarm
+  bleibt **gehalten**, bis er über den Button **Trockenlauf quittieren**
+  quittiert oder die Pumpe neu gestartet wird.
+- Ist die automatische Abschaltung aktiviert, wird zusätzlich die **Pumpe
+  ausgeschaltet** und der **Zeitplan pausiert** (*Zeitplan aktiv* geht auf
+  `off`), damit sie im nächsten Fenster nicht erneut trocken läuft. Der
+  Button **Trockenlauf quittieren** aktiviert den Zeitplan wieder; alternativ
+  schaltest du *Zeitplan aktiv* selbst wieder ein. Nach einem Neustart von
+  Home Assistant bleibt *Zeitplan aktiv* aus, bis du es wieder einschaltest.
 
 ## Verhalten im Detail
 
@@ -56,6 +96,7 @@ starten.
 - **Nur bei einem Wechsel** wird geschaltet: Schaltest du die Pumpe von Hand
   während eines Fensters aus (oder außerhalb an), bleibt das bis zum nächsten
   Fensterwechsel bestehen.
+- Sind **keine Zeitfenster** eingetragen, schaltet der Zeitplan die Pumpe nie.
 - Nach einem **Neustart** von Home Assistant bzw. beim Aktivieren der
   Automatik wird die Pumpe einmalig an den Soll-Zustand angeglichen.
 - Ist die Pumpe gerade `unavailable`/`unknown` (typisch beim Hochfahren),

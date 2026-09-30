@@ -27,5 +27,11 @@ async def async_get_config_entry_diagnostics(
             "next_start": next_start.isoformat() if next_start else None,
             "runtime_today_minutes": manager.runtime_today_minutes(),
             "pump_state": pump.state if pump else None,
+            "dry_run": {
+                "configured": manager.dry_run_configured,
+                "detected": manager.dry_run_detected,
+                "schedule_paused": manager.dry_run_paused_schedule,
+                "power": manager.current_power(),
+            },
         },
     }

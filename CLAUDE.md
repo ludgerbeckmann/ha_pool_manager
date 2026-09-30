@@ -9,7 +9,7 @@ Die README.md ist die Nutzerdokumentation; diese Datei enthält den Kontext
 Home-Assistant Custom Integration `ha_pool_manager` (Anzeigename "Pool
 Manager"): Sammlung von Funktionen zur Nutzung eines Pools. Ein Config-Entry
 entspricht einem Pool (eindeutig über die Pumpen-Entität). Aktueller
-Funktionsumfang: Pumpe nach Zeitplan. Weitere Funktionen kommen bei Bedarf
+Funktionsumfang: Pumpe nach Zeitplan, Trockenlauf-Erkennung per Leistungssensor. Weitere Funktionen kommen bei Bedarf
 als eigene Module dazu.
 
 Aktuelle Version: siehe `custom_components/ha_pool_manager/manifest.json`.
@@ -37,10 +37,12 @@ custom_components/ha_pool_manager/
 ├── __init__.py       # Setup/Unload, Dienst run_pump, Update-Listener (Reload)
 ├── manager.py        # PoolManager: Zeitplan-Auswertung, Schalten, Laufzeit
 ├── schedule.py       # Reine Zeitplan-Logik ohne HA-Imports (Window, is_active, next_start)
+├── dry_run.py        # Reine Trockenlauf-Logik ohne HA-Imports (DryRunDetector)
 ├── config_flow.py    # Config-Flow (Pool anlegen) + Options-Flow (Menü: Pumpe/Fenster)
 ├── entity.py         # Basisklasse, aktualisiert sich per Dispatcher-Signal
 ├── switch.py         # Zeitplan aktiv (RestoreEntity)
-├── binary_sensor.py  # Pumpe soll laufen
+├── binary_sensor.py  # Pumpe soll laufen, Trockenlauf erkannt (nur mit Leistungssensor)
+├── button.py         # Trockenlauf quittieren (nur mit Leistungssensor)
 ├── sensor.py         # Nächster Start, Laufzeit heute
 ├── diagnostics.py
 ├── services.yaml, strings.json, translations/{de,en}.json
@@ -93,6 +95,35 @@ Englisch nutzt. `tzdata` muss installiert sein.
 liegen im Repo-Root und in `custom_components/ha_pool_manager/brand/`. Die
 Repo-Topics (z. B. `home-assistant`, `hacs`, `pool`) lassen sich nicht per
 Code setzen, sondern nur in den GitHub-Repo-Einstellungen (About → Topics).
+
+**11. Trockenlauf: Alarm ist ein Latch, Timer läuft nur bei "Pumpe an UND
+Leistung durchgehend im Bereich".** `DryRunDetector.update` setzt den Timer bei
+Pumpe aus, Leistung außerhalb oder Sensor `unavailable` zurück (Sensorausfall
+beim Start darf keinen Alarm auslösen, vgl. Lektion 2). Geprüft wird bei jedem
+Minuten-Tick UND bei Leistungsänderung - ein konstant gemeldeter Wert erzeugt
+nämlich keine Zustandsänderungen. Der Alarm (`dry_run_detected`) bleibt gehalten,
+bis der Button quittiert oder die Pumpe neu startet (`_pump_changed`).
+`kW`-Sensoren werden in W umgerechnet (`current_power`).
+
+**12. Auto-Aus pausiert den Zeitplan.** Bei `dry_auto_off` setzt der Manager
+`enabled = False` + `_paused_by_dry_run = True`, beendet einen manuellen Lauf und
+schaltet die Pumpe aus. Der Button ruft `async_acknowledge_dry_run()` auf, das den
+Zeitplan wieder einschaltet und `_last_desired = None` setzt (erzwingt Angleichen).
+`_paused_by_dry_run` liegt nur im Speicher; "Zeitplan aktiv" wird über
+`RestoreEntity` wiederhergestellt und bleibt nach einem Neustart aus.
+
+**13. Optionale Entitäten entfernen, wenn nicht konfiguriert.** `binary_sensor.py`
+und `button.py` legen die Trockenlauf-Entitäten nur mit Leistungssensor an und
+entfernen sie sonst per `remove_unconfigured()` aus der Registry (sonst blieben
+sie nach dem Entfernen des Sensors als "nicht verfügbar" stehen).
+
+**14. Ohne Zeitfenster greift der Zeitplan nie ein.** `_async_evaluate` setzt den
+Soll-Zustand nur bei `enabled and windows`; sonst hätte der Startabgleich eine
+laufende Pumpe eines Pools ohne Zeitplan ausgeschaltet.
+
+**15. Options-Flow speichert per Merge.** `_save(**changes)` behält alle nicht
+genannten Optionen; nur "Trockenlauferkennung ohne Leistungssensor" ersetzt die
+Optionen exakt (entfernt die Trockenlauf-Schlüssel).
 
 ## Offene/mögliche nächste Schritte
 

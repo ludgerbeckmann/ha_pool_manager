@@ -13,7 +13,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import ATTR_DURATION, ATTR_ENTRY_ID, DOMAIN, SERVICE_RUN_PUMP
 from .manager import PoolManager
 
-PLATFORMS = ["binary_sensor", "sensor", "switch"]
+PLATFORMS = ["binary_sensor", "button", "sensor", "switch"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

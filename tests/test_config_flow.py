@@ -29,7 +29,7 @@ async def test_options_add_and_remove_window(hass):
     await hass.config_entries.async_setup(entry.entry_id)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["menu_options"] == ["pump", "add_window"]
+    assert result["menu_options"] == ["pump", "add_window", "dry_run"]
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"next_step_id": "add_window"}
     )
@@ -54,5 +54,46 @@ async def test_options_add_and_remove_window(hass):
     done = await hass.config_entries.options.async_configure(result["flow_id"], {"remove": ["0"]})
     assert done["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options["windows"] == []
+    await hass.async_block_till_done()
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_options_dry_run_set_validate_and_clear(hass):
+    hass.states.async_set("switch.pump", "off")
+    entry = MockConfigEntry(domain=DOMAIN, title="P", data={"pump_entity": "switch.pump"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+
+    async def open_dry():
+        r = await hass.config_entries.options.async_init(entry.entry_id)
+        return await hass.config_entries.options.async_configure(
+            r["flow_id"], {"next_step_id": "dry_run"}
+        )
+
+    r = await open_dry()
+    bad = await hass.config_entries.options.async_configure(
+        r["flow_id"],
+        {"power_entity": "sensor.p", "dry_min_power": 100, "dry_max_power": 75,
+         "dry_duration": 5, "dry_auto_off": False},
+    )
+    assert bad["errors"] == {"base": "min_ge_max"}
+    ok = await hass.config_entries.options.async_configure(
+        r["flow_id"],
+        {"power_entity": "sensor.p", "dry_min_power": 75, "dry_max_power": 100,
+         "dry_duration": 5, "dry_auto_off": True},
+    )
+    assert ok["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["power_entity"] == "sensor.p"
+    assert entry.options["dry_auto_off"] is True
+    assert entry.options["pump_entity"] == "switch.pump"  # bleibt erhalten
+    await hass.async_block_till_done()
+
+    r = await open_dry()
+    cleared = await hass.config_entries.options.async_configure(
+        r["flow_id"],
+        {"dry_min_power": 75, "dry_max_power": 100, "dry_duration": 5, "dry_auto_off": False},
+    )
+    assert cleared["type"] is FlowResultType.CREATE_ENTRY
+    assert "power_entity" not in entry.options and "dry_auto_off" not in entry.options
     await hass.async_block_till_done()
     await hass.config_entries.async_unload(entry.entry_id)
