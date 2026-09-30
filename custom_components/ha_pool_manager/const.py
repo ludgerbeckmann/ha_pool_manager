@@ -10,6 +10,16 @@ CONF_START = "start"
 CONF_END = "end"
 CONF_DAYS = "days"
 
+CONF_POWER_ENTITY = "power_entity"
+CONF_DRY_MIN_POWER = "dry_min_power"
+CONF_DRY_MAX_POWER = "dry_max_power"
+CONF_DRY_DURATION = "dry_duration"
+CONF_DRY_AUTO_OFF = "dry_auto_off"
+
+DEFAULT_DRY_MIN_POWER = 75
+DEFAULT_DRY_MAX_POWER = 100
+DEFAULT_DRY_DURATION = 5
+
 # Wochentage in der Reihenfolge von datetime.weekday() (Montag = 0)
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 

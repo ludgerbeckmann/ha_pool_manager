@@ -21,7 +21,8 @@
         "menu_options": {
           "pump": "Change pump",
           "add_window": "Add time window",
-          "remove_window": "Remove time windows"
+          "remove_window": "Remove time windows",
+          "dry_run": "Dry-run detection"
         }
       },
       "pump": {
@@ -44,12 +45,27 @@
         "data": {
           "remove": "Windows to remove"
         }
+      },
+      "dry_run": {
+        "title": "Dry-run detection",
+        "description": "Detects a pump running dry: the pump is on and the power stays between the lower and upper limit for the set duration. Without a power sensor the feature is off. An alarm stays until acknowledged or the pump is restarted.",
+        "data": {
+          "power_entity": "Power sensor (W)",
+          "dry_min_power": "Lower limit",
+          "dry_max_power": "Upper limit",
+          "dry_duration": "Duration",
+          "dry_auto_off": "Switch the pump off on dry run and pause the schedule"
+        },
+        "data_description": {
+          "dry_auto_off": "The schedule is only re-enabled after acknowledging (button)."
+        }
       }
     },
     "error": {
       "too_many_windows": "Maximum number of time windows reached.",
       "start_equals_end": "Start and end must differ.",
-      "no_days": "Select at least one day."
+      "no_days": "Select at least one day.",
+      "min_ge_max": "The lower limit must be below the upper limit."
     }
   },
   "entity": {
@@ -61,6 +77,9 @@
     "binary_sensor": {
       "pump_should_run": {
         "name": "Pump should run"
+      },
+      "dry_run_detected": {
+        "name": "Dry run detected"
       }
     },
     "sensor": {
@@ -69,6 +88,11 @@
       },
       "runtime_today": {
         "name": "Runtime today"
+      }
+    },
+    "button": {
+      "dry_run_acknowledge": {
+        "name": "Acknowledge dry run"
       }
     }
   },

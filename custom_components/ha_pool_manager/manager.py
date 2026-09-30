@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import logging
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -24,12 +25,21 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_DRY_AUTO_OFF,
+    CONF_DRY_DURATION,
+    CONF_DRY_MAX_POWER,
+    CONF_DRY_MIN_POWER,
+    CONF_POWER_ENTITY,
     CONF_PUMP_ENTITY,
     CONF_WINDOWS,
+    DEFAULT_DRY_DURATION,
+    DEFAULT_DRY_MAX_POWER,
+    DEFAULT_DRY_MIN_POWER,
     DOMAIN,
     SIGNAL_UPDATE,
     STORAGE_VERSION,
 )
+from .dry_run import DryRunDetector
 from .schedule import Window, is_active, next_start, parse_windows
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +57,19 @@ class PoolManager:
         self.windows: list[Window] = parse_windows(entry.options.get(CONF_WINDOWS))
         self.enabled = True
         self.manual_until: datetime | None = None
+
+        opts = entry.options
+        self.power_entity: str | None = opts.get(CONF_POWER_ENTITY) or None
+        self.dry_auto_off: bool = bool(opts.get(CONF_DRY_AUTO_OFF, False))
+        self._detector = DryRunDetector(
+            float(opts.get(CONF_DRY_MIN_POWER, DEFAULT_DRY_MIN_POWER)),
+            float(opts.get(CONF_DRY_MAX_POWER, DEFAULT_DRY_MAX_POWER)),
+            timedelta(minutes=float(opts.get(CONF_DRY_DURATION, DEFAULT_DRY_DURATION))),
+        )
+        # Trockenlauf-Alarm bleibt gehalten, bis quittiert oder die Pumpe neu startet
+        self.dry_run_detected = False
+        self.dry_run_since: datetime | None = None
+        self._paused_by_dry_run = False
 
         self._last_desired: bool | None = None
         self._pending: bool | None = None
@@ -79,6 +102,12 @@ class PoolManager:
                 self.hass, [self.pump_entity], self._pump_changed
             )
         )
+        if self.power_entity:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, [self.power_entity], self._power_changed
+                )
+            )
         await self._async_evaluate(now)
 
     async def async_stop(self) -> None:
@@ -121,6 +150,9 @@ class PoolManager:
 
     async def async_set_enabled(self, enabled: bool) -> None:
         self.enabled = enabled
+        if enabled:
+            # Bewusst wieder eingeschaltet: keine ausstehende Trockenlauf-Pause mehr
+            self._paused_by_dry_run = False
         await self._async_evaluate(dt_util.now())
 
     async def async_run_pump(self, minutes: float) -> None:
@@ -135,6 +167,105 @@ class PoolManager:
         await self._async_evaluate(now)
 
     # ------------------------------------------------------------------ intern
+
+    @property
+    def dry_run_configured(self) -> bool:
+        return self.power_entity is not None
+
+    @property
+    def dry_run_paused_schedule(self) -> bool:
+        return self._paused_by_dry_run
+
+    def current_power(self) -> float | None:
+        """Aktuelle Leistung in Watt (None, wenn nicht verfügbar)."""
+        if not self.power_entity:
+            return None
+        state = self.hass.states.get(self.power_entity)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        try:
+            value = float(state.state)
+        except ValueError:
+            return None
+        if str(state.attributes.get("unit_of_measurement", "")).lower() == "kw":
+            value *= 1000
+        return value
+
+    async def async_acknowledge_dry_run(self) -> None:
+        """Alarm quittieren; ein durch den Trockenlauf pausierter Zeitplan läuft weiter."""
+        self.dry_run_detected = False
+        self.dry_run_since = None
+        self._detector.reset()
+        persistent_notification.async_dismiss(self.hass, self._notification_id)
+        if self._paused_by_dry_run:
+            self._paused_by_dry_run = False
+            self.enabled = True
+            self._last_desired = None  # Pumpe wieder an den Zeitplan angleichen
+        await self._async_evaluate(dt_util.now())
+
+    @property
+    def _notification_id(self) -> str:
+        return f"{DOMAIN}_dry_run_{self.entry.entry_id}"
+
+    async def _async_check_dry_run(self, now: datetime) -> None:
+        if not self.power_entity:
+            return
+        pump = self.hass.states.get(self.pump_entity)
+        pump_on = pump is not None and pump.state == STATE_ON
+        due = self._detector.update(now, pump_on, self.current_power())
+        if not due or self.dry_run_detected:
+            return
+
+        self.dry_run_detected = True
+        self.dry_run_since = self._detector.since
+        _LOGGER.warning("Trockenlauf erkannt an %s", self.pump_entity)
+        if self.dry_auto_off:
+            # Zeitplan pausieren, manuellen Lauf beenden, Pumpe ausschalten
+            self.enabled = False
+            self._paused_by_dry_run = True
+            self.manual_until = None
+            self._manual_on = False
+            self._pending = None
+            if self._manual_unsub:
+                self._manual_unsub()
+                self._manual_unsub = None
+            try:
+                await self.hass.services.async_call(
+                    "homeassistant",
+                    "turn_off",
+                    {ATTR_ENTITY_ID: self.pump_entity},
+                    blocking=True,
+                )
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Abschalten der Pumpe %s fehlgeschlagen", self.pump_entity)
+        self._notify_dry_run()
+
+    def _notify_dry_run(self) -> None:
+        de = self.hass.config.language.startswith("de")
+        power = self.current_power()
+        watt = f"{power:.0f} W" if power is not None else "?"
+        minutes = self._detector.duration.total_seconds() / 60
+        if de:
+            title = f"Pool: Pumpe läuft trocken ({self.entry.title})"
+            message = (
+                f"Die Leistung von {self.pump_entity} lag {minutes:g} Minuten lang "
+                f"im Trockenlauf-Bereich ({self._detector.minimum:g}–"
+                f"{self._detector.maximum:g} W, zuletzt {watt})."
+            )
+            if self.dry_auto_off:
+                message += " Die Pumpe wurde ausgeschaltet und der Zeitplan pausiert."
+        else:
+            title = f"Pool: pump running dry ({self.entry.title})"
+            message = (
+                f"The power of {self.pump_entity} stayed in the dry-run range for "
+                f"{minutes:g} minutes ({self._detector.minimum:g}-"
+                f"{self._detector.maximum:g} W, last {watt})."
+            )
+            if self.dry_auto_off:
+                message += " The pump was switched off and the schedule paused."
+        persistent_notification.async_create(
+            self.hass, message, title=title, notification_id=self._notification_id
+        )
 
     async def _manual_expired(self, _now: datetime) -> None:
         self._manual_unsub = None
@@ -167,6 +298,7 @@ class PoolManager:
         vorgemerkt und wird beim nächsten Durchlauf erneut versucht.
         """
         self._roll_day(now)
+        await self._async_check_dry_run(now)
         if self.manual_until is not None and now >= self.manual_until:
             self.manual_until = None
 
@@ -179,7 +311,7 @@ class PoolManager:
             # Manueller Lauf ist gerade zu Ende gegangen
             desired = scheduled if self.enabled else False
             self._manual_on = False
-        elif self.enabled:
+        elif self.enabled and self.windows:
             desired = scheduled
         else:
             desired = None
@@ -219,7 +351,13 @@ class PoolManager:
         now = dt_util.now()
         self._roll_day(now)
         new = event.data.get("new_state")
+        old = event.data.get("old_state")
         is_on = new is not None and new.state == STATE_ON
+        if is_on and (old is None or old.state != STATE_ON) and self.dry_run_detected:
+            # Pumpe wurde neu gestartet: Alarm zurücknehmen, die Erkennung beginnt neu
+            self.dry_run_detected = False
+            self.dry_run_since = None
+            self._detector.reset()
         if is_on and self._on_since is None:
             self._on_since = now
         elif not is_on and self._on_since is not None:
@@ -229,6 +367,14 @@ class PoolManager:
         if new is not None and new.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             if self._pending is not None:
                 self.hass.async_create_task(self._async_apply(self._pending))
+        self._notify()
+
+    @callback
+    def _power_changed(self, event: Event) -> None:
+        self.hass.async_create_task(self._async_dry_run_and_notify())
+
+    async def _async_dry_run_and_notify(self) -> None:
+        await self._async_check_dry_run(dt_util.now())
         self._notify()
 
     def _notify(self) -> None:
