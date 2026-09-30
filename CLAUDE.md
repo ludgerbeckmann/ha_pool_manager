@@ -44,6 +44,7 @@ custom_components/ha_pool_manager/
 ├── sensor.py         # Nächster Start, Laufzeit heute
 ├── diagnostics.py
 ├── services.yaml, strings.json, translations/{de,en}.json
+brand/                # Icons (Root UND custom_components/.../brand/ - beide nötig, HACS-Check)
 tests/                # pytest-homeassistant-custom-component
 .github/              # validate (Hassfest+HACS), auto-release, release.yml
 ```
@@ -87,6 +88,11 @@ Englisch nutzt. `tzdata` muss installiert sein.
 
 **9. `py_compile` prüft keine fehlenden Imports.** Nach Änderungen an
 `config_flow.py`/`manager.py` die Tests laufen lassen, nicht nur kompilieren.
+
+**10. HACS-Validierung braucht Brand-Icons und GitHub-Topics.** `brand/{icon,logo}[@2x].png`
+liegen im Repo-Root und in `custom_components/ha_pool_manager/brand/`. Die
+Repo-Topics (z. B. `home-assistant`, `hacs`, `pool`) lassen sich nicht per
+Code setzen, sondern nur in den GitHub-Repo-Einstellungen (About → Topics).
 
 ## Offene/mögliche nächste Schritte
 
